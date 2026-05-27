@@ -5,15 +5,19 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { FaHeart, FaSearch, FaFilter, FaStar, FaFilePdf, FaFileWord, FaFilePowerpoint, FaRegClock } from "react-icons/fa";
+import { FaHeart, FaSearch, FaFilter, FaStar, FaFilePdf, FaFileWord, FaFilePowerpoint, FaRegClock, FaExchangeAlt, FaShoppingCart } from "react-icons/fa";
 import { motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMarketplaceMaterials } from "@/hooks/api/useMaterials";
+import { useCart } from "@/hooks/useCart";
+import { useComparison } from "@/hooks/useComparison";
 
 const SUBJECTS = ["Math", "Science", "Law", "Technology", "Business", "Medicine", "Arts"];
 
 export default function MarketPage() {
+	const { addToCart, cartItems } = useCart();
+	const { addToComparison, comparedItems } = useComparison();
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
@@ -215,26 +219,67 @@ export default function MarketPage() {
 								<span className="text-sm text-gray-500">{data?.total || 0} results</span>
 							</div>
 							<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 relative z-10">
-								{materials.map((material) => (
-									<Link href={`/marketplace/${material._id || material.id}`} key={material._id || material.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300 flex flex-col group">
-										<div className="relative w-full h-28 bg-gray-100 overflow-hidden">
-											<Image src={material.image || material.thumbnailUrl || "/images/image1.jpg"} alt={material.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
-										</div>
-										<div className="p-4 flex-1 flex flex-col">
-											<h3 className="text-sm font-bold text-gray-900 mb-1 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors">{material.title}</h3>
-											<p className="text-xs text-gray-500 mb-1">by <span className="font-medium text-gray-700">{material.author}</span></p>
-											<p className="text-xs text-gray-500 mb-3 line-clamp-2">{material.description}</p>
-											<div className="mt-auto pt-3 border-t border-gray-100 flex justify-between items-center">
-												<div className="flex items-center text-xs text-gray-500 gap-3">
-													<span className="flex items-center gap-1">{/* File icon logic can be improved if fileType is available */}<FaFilePdf className="text-red-500" /> <span className="uppercase">PDF</span></span>
-													<div className="flex items-center gap-1"><FaHeart className="text-gray-400" /><span>{material.likes || 0}</span></div>
+								{materials.map((material) => {
+									const materialId = material._id || material.id;
+									const isAlreadyInCart = cartItems.some((item) => (item._id || item.id) === materialId);
+									const isAlreadyInComp = comparedItems.some((item) => (item._id || item.id) === materialId);
+									const creatorAddress = material.userAddress || material.ownerAddress || 'GCS7TA6CS7TA6CS7TA6CS7TA6CS7TA6CS7TA6CS7TA6CS7TA';
+									
+									return (
+										<div key={materialId} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300 flex flex-col group relative">
+											<Link href={`/marketplace/${materialId}`} className="relative w-full h-28 bg-gray-100 overflow-hidden block">
+												<Image src={material.image || material.thumbnailUrl || "/images/image1.jpg"} alt={material.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+											</Link>
+											<div className="p-4 flex-1 flex flex-col">
+												<Link href={`/marketplace/${materialId}`}>
+													<h3 className="text-sm font-bold text-gray-900 mb-1 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors">{material.title}</h3>
+												</Link>
+												<p className="text-xs text-gray-500 mb-1">
+													by{" "}
+													<Link href={`/creator/${creatorAddress}`} className="font-semibold text-blue-600 hover:underline hover:text-blue-750 transition-colors">
+														{material.author || 'Anonymous'}
+													</Link>
+												</p>
+												<p className="text-xs text-gray-500 mb-3 line-clamp-2">{material.description}</p>
+												<div className="mt-auto pt-3 border-t border-gray-100 flex justify-between items-center">
+													<div className="flex items-center text-xs text-gray-500 gap-3">
+														<span className="flex items-center gap-1"><FaFilePdf className="text-red-500" /> <span className="uppercase">PDF</span></span>
+														<div className="flex items-center gap-1"><FaHeart className="text-gray-400" /><span>{material.likes || 0}</span></div>
+													</div>
+													<div className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-sm font-bold shadow-sm border border-blue-100">{material.price} <span className="text-[10px] font-medium text-blue-500">XLM</span></div>
 												</div>
-												<div className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-sm font-bold shadow-sm border border-blue-100">{material.price} <span className="text-[10px] font-medium text-blue-500">XLM</span></div>
+												<div className="mt-2 flex justify-between text-xs text-gray-500 pb-3 border-b border-gray-100">
+													<span>{material.subject}</span>
+													<span><FaStar className="inline text-yellow-500 mr-0.5" /> {material.rating || 4.8}</span>
+												</div>
+												<div className="grid grid-cols-2 gap-2 mt-3">
+													<button
+														onClick={() => addToComparison(material)}
+														className={`flex items-center justify-center gap-1 py-1.5 rounded-lg font-bold text-[10px] transition-all border cursor-pointer ${
+															isAlreadyInComp
+																? "bg-amber-550 border-amber-600 text-white shadow-xs"
+																: "bg-white hover:bg-gray-50 border-gray-200 text-gray-600"
+														}`}
+													>
+														<FaExchangeAlt className="w-2.5 h-2.5" />
+														{isAlreadyInComp ? "Contrasted" : "Contrast"}
+													</button>
+													<button
+														onClick={() => addToCart(material)}
+														className={`flex items-center justify-center gap-1 py-1.5 rounded-lg font-bold text-[10px] transition-all border cursor-pointer ${
+															isAlreadyInCart
+																? "bg-emerald-600 border-emerald-700 text-white shadow-xs"
+																: "bg-blue-600 hover:bg-blue-750 border-blue-700 text-white shadow-xs"
+														}`}
+													>
+														<FaShoppingCart className="w-2.5 h-2.5" />
+														{isAlreadyInCart ? "In Cart" : "Add to Cart"}
+													</button>
+												</div>
 											</div>
-											<div className="mt-2 flex justify-between text-xs text-gray-500"><span>{material.subject}</span><span><FaStar className="inline text-yellow-500" /> {material.rating || 4.8}</span></div>
 										</div>
-									</Link>
-								))}
+									);
+								})}
 							</motion.div>
 							{/* Pagination */}
 							{totalPages > 1 && (
