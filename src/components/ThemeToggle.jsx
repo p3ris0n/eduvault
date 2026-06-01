@@ -1,20 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { FaMoon, FaSun } from "react-icons/fa6";
 import { useThemePreference } from "@/hooks/useThemePreference";
 
 export default function ThemeToggle({ className = "" }) {
 	const { isDark, toggleTheme } = useThemePreference();
-	const [mounted, setMounted] = useState(false);
-
-	useEffect(() => {
-		setMounted(true);
-	}, []);
-
-	if (!mounted) {
-		return null;
-	}
 
 	return (
 		<button
