@@ -26,6 +26,7 @@ export default function PayoutSettingsPanel({ initialUser }) {
   const [success, setSuccess] = useState(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm({
       payoutWalletAddress: initialUser?.payoutWalletAddress || "",
       preferredPayoutCurrency: initialUser?.preferredPayoutCurrency || "XLM",
