@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { FaTimes } from "react-icons/fa";
-import Image from "next/image";
 import { useAccount } from "wagmi";
 import CheckoutReceiptModal from "../../../../../components/modals/CheckoutReceiptModal";
 import ConnectWalletModal from "./ConnectWalletModal";
@@ -12,6 +12,7 @@ import { useCreatePurchase, useStartAccessRequest } from "@/hooks/api/usePurchas
 import { ACCEPTED_ASSET, getExplorerTxUrl } from "@/lib/config/chain";
 import { TransactionStatus } from "@/lib/transactions/transaction";
 import { useTransactionCenter } from "@/providers/TransactionProvider";
+import ConnectWalletModal from "./ConnectWalletModal";
 
 const SUPPORTED_ASSETS = [
   { code: ACCEPTED_ASSET, issuer: null, label: `Stellar ${ACCEPTED_ASSET}` },
@@ -93,6 +94,14 @@ export default function BuyNowModal({
     selectedAsset,
     price,
   );
+  const {
+    activeTransaction,
+    beginTransaction,
+    markStatus,
+    confirmTransaction,
+    failTransaction,
+    clearTransaction,
+  } = useTransactionCenter();
 
   const isReceiptVisible = receiptStatus !== "idle";
   const explorerHint = useMemo(
