@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { materialService } from '@/services/materialService';
 import { queryKeys } from '@/lib/query/queryKeys';
 
@@ -6,6 +6,7 @@ export function useMarketplaceMaterials(params = {}) {
   return useQuery({
     queryKey: queryKeys.materials.marketplace(params),
     queryFn: () => materialService.getMarketplaceMaterials(params),
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
   });
 }
