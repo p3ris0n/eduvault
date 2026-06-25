@@ -12,8 +12,15 @@ export const runtime = "nodejs";
 function sanitizeMaterial(doc) {
   if (!doc) return doc;
   const { storageKey, fileUrl, metadataUrl, ...safe } = doc;
+  const averageScore = Number(safe.averageScore ?? safe.rating ?? 0) || 0;
+  const feedbackCount = Number(safe.feedbackCount ?? safe.reviewsCount ?? 0) || 0;
+
   return {
     ...safe,
+    averageScore,
+    rating: averageScore,
+    feedbackCount,
+    reviewsCount: feedbackCount,
     userAddress: safe.userAddress ?? safe.ownerAddress ?? null,
   };
 }

@@ -30,6 +30,15 @@ function getPreviewCounts(material) {
 	};
 }
 
+function getAverageScore(material) {
+	const score = Number(material.averageScore ?? material.rating);
+	return Number.isFinite(score) && score > 0 ? score.toFixed(1) : "New";
+}
+
+function getFeedbackCount(material) {
+	return Number(material.feedbackCount ?? material.reviewsCount ?? 0) || 0;
+}
+
 function PreviewBlock({ title, emptyLabel, items }) {
 	const hasItems = Array.isArray(items) && items.length > 0;
 
@@ -262,9 +271,9 @@ export default function MaterialDetailsPage() {
 												{material.price} {material.currency || "XLM"}
 											</span>
 										</div>
-										<span className="text-sm text-yellow-500">⭐ {material.rating || 4.8}</span>
+										<span className="text-sm text-yellow-500">Score {getAverageScore(material)}</span>
 										<span className="text-gray-400 text-sm">
-											({material.reviewsCount || 0} Reviews)
+											({getFeedbackCount(material)} Feedback)
 										</span>
 									</div>
 
@@ -424,8 +433,8 @@ export default function MaterialDetailsPage() {
 							<MaterialReviewPanel
 								materialId={id}
 								initialReviews={material.reviews || material.reviewHistory || []}
-								entitlement={entitlementQuery}
 								currentAddress={address}
+								creatorAddress={material.userAddress || material.ownerAddress || material.creatorAddress || material.author?.walletAddress}
 							/>
 
 							{/* Recommendations */}

@@ -57,6 +57,15 @@ function getPreviewCounts(material) {
 	};
 }
 
+function getAverageScore(material) {
+	const score = Number(material.averageScore ?? material.rating);
+	return Number.isFinite(score) && score > 0 ? score.toFixed(1) : "New";
+}
+
+function getFeedbackCount(material) {
+	return Number(material.feedbackCount ?? material.reviewsCount ?? 0) || 0;
+}
+
 export default function MarketPage() {
 	const { addToCart, cartItems } = useCart();
 	const { addToComparison, comparedItems } = useComparison();
@@ -569,7 +578,10 @@ export default function MarketPage() {
 														<div className="flex items-center gap-1">
 															<FaStar className="text-yellow-400 w-3.5 h-3.5" />
 															<span className="text-xs font-semibold text-gray-700">
-																{material.rating || "4.8"}
+																{getAverageScore(material)}
+															</span>
+															<span className="text-[11px] text-gray-400">
+																({getFeedbackCount(material)})
 															</span>
 														</div>
 
