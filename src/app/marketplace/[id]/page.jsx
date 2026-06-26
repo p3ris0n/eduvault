@@ -233,7 +233,11 @@ function PriceLine({ price, currency, rating, reviewsCount }) {
 				</span>
 			</div>
 			<div className="flex items-center gap-2 text-sm">
-				<span className="text-yellow-500" aria-hidden="true">⭐ {rating || 4.8}</span>
+				{rating && rating !== "New" ? (
+				<span className="text-yellow-500">⭐ {rating}</span>
+			) : (
+				<span className="text-gray-400">No ratings yet</span>
+			)}
 				<span className="text-gray-400">({reviewsCount || 0} reviews)</span>
 			</div>
 		</div>
@@ -291,7 +295,7 @@ function PurchaseCard({
 							className="w-full sm:w-auto sm:flex-1 px-6 py-2 border border-gray-300 text-gray-700 font-semibold rounded-md hover:bg-gray-100 transition focus-visible:ring-2 focus-visible:ring-blue-500"
 							onClick={onAddToCart}
 						>
-							Add to cart
+							Buy now
 						</button>
 						<button
 							type="button"
@@ -333,7 +337,7 @@ export default function MaterialDetailsPage() {
 		: entitlementQuery.data?.status || (entitlementQuery.isLoading ? "checking" : "not_purchased");
 	const isOwned =
 		accessStatus === "active" ||
-		Boolean(entitlementQuery.data?.owned || entitlementQuery.data?.hasAccess);
+		Boolean(address && (entitlementQuery.data?.owned || entitlementQuery.data?.hasAccess));
 
 	const handleDownload = async () => {
 		if (!address) {
