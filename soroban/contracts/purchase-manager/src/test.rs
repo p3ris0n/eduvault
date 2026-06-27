@@ -305,6 +305,83 @@ fn rejects_admin_calls_from_non_admin() {
     assert_eq!(result, Err(Ok(PurchaseError::NotAuthorized)));
 }
 
+#[test]
+fn admin_updates_platform_fee() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let registry = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    let contract_id = env.register(PurchaseManager, ());
+    let client = PurchaseManagerClient::new(&env, &contract_id);
+
+    // Initialize and verify initial state
+    client.initialize(&admin, &registry, &treasury, &500);
+    let config = client.get_platform_config().unwrap();
+    assert_eq!(config.platform_fee_bps, 500);
+
+    // Update to a new valid rate
+    client.update_platform_fee(&admin, &200);
+    let config = client.get_platform_config().unwrap();
+    assert_eq!(config.platform_fee_bps, 200);
+
+    // Verify the fee update doesn't break anything
+    let config = client.get_platform_config().unwrap();
+    assert_eq!(config.treasury, treasury);
+    assert_eq!(config.platform_fee_bps, 200);
+    assert!(!config.paused);
+}
+
+#[test]
+fn admin_updates_platform_fee_to_max() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let registry = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let (_, client) = install_and_init_contract(&env, &admin, &registry, &treasury, 500);
+
+    // Update to max allowed (10% = 1_000 bps)
+    client.update_platform_fee(&admin, &1_000);
+    let config = client.get_platform_config().unwrap();
+    assert_eq!(config.platform_fee_bps, 1_000);
+}
+
+#[test]
+fn rejects_update_platform_fee_above_max() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let registry = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let (_, client) = install_and_init_contract(&env, &admin, &registry, &treasury, 500);
+
+    let result = client.try_update_platform_fee(&admin, &1_001);
+    assert_eq!(result, Err(Ok(PurchaseError::InvalidPlatformFee)));
+}
+
+#[test]
+fn rejects_update_platform_fee_by_non_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let non_admin = Address::generate(&env);
+    let registry = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let (_, client) = install_and_init_contract(&env, &admin, &registry, &treasury, 500);
+
+    let result = client.try_update_platform_fee(&non_admin, &300);
+    assert_eq!(result, Err(Ok(PurchaseError::NotAuthorized)));
+}
+
 // ============== Purchase Flow Tests ==============
 
 // Note: These tests require mocking the MaterialRegistry
@@ -788,7 +865,7 @@ fn entitlement_record_matches_purchase_details() {
     assert_eq!(entitlement.purchase_id, purchase_id);
     assert_eq!(entitlement.asset, asset);
     assert_eq!(entitlement.amount, 2_000_000);
-    assert!(entitlement.granted_ledger > 0);
+    assert_eq!(entitlement.granted_ledger, env.ledger().sequence());
 
     assert_eq!(escrow.purchase_id, purchase_id);
     assert_eq!(escrow.seller_net, 1_900_000);
