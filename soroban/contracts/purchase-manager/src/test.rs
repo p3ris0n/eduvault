@@ -1225,6 +1225,25 @@ fn set_oracle_and_get_asset_info_work() {
     assert!(info.enabled);
 }
 
+#[test]
+fn returns_false_for_non_existent_users() {
+    let env = Env::default();
+    env.mock_all_auths();
+    
+    let admin = Address::generate(&env);
+    let registry = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    
+    let (_, client) = install_and_init_contract(&env, &admin, &registry, &treasury, 500);
+    
+    let unknown_buyer = Address::generate(&env);
+    let material_id = bytes32(&env, 99);
+    
+    assert!(!client.has_entitlement(&material_id, &unknown_buyer));
+}
+
+#[test]
+fn purchase_fails_for_invalid_items() {
 // ============== Escrow Tests ==============
 
 #[test]
@@ -1288,6 +1307,7 @@ fn withdraw_payouts_fails_before_lock_period() {
     let registry = env.register(MockRegistry, ());
     let treasury = Address::generate(&env);
     let buyer = Address::generate(&env);
+    let asset = Address::generate(&env);
     let creator = Address::generate(&env);
     let asset = env.register(MockAsset, ());
 
@@ -1318,6 +1338,14 @@ fn withdraw_payouts_fails_before_lock_period() {
     let (_, client) = install_and_init_contract(&env, &admin, &registry, &treasury, 500);
     client.set_asset_allowed(&admin, &asset, &AssetKind::Token, &true);
 
+    let invalid_material_id = bytes32(&env, 100);
+
+    let result = client.try_purchase(&buyer, &invalid_material_id, &asset, &1_000_000);
+    assert_eq!(result, Err(Ok(PurchaseError::MaterialNotFound)));
+}
+
+#[test]
+fn rejects_unauthorized_platform_config_change() {
     let purchase_id = client.purchase(&buyer, &material_id, &asset, &1_000_000);
 
     let result = client.try_withdraw_payouts(&creator, &purchase_id);
@@ -1330,6 +1358,16 @@ fn withdraw_payouts_succeeds_after_lock_period() {
     env.mock_all_auths();
 
     let admin = Address::generate(&env);
+    let unauthorized_user = Address::generate(&env);
+    let registry = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let (_, client) = install_and_init_contract(&env, &admin, &registry, &treasury, 500);
+
+    let new_treasury = Address::generate(&env);
+    let result = client.try_set_platform_config(&unauthorized_user, &new_treasury, &600, &false);
+    assert_eq!(result, Err(Ok(PurchaseError::NotAuthorized)));
+}
     let registry = env.register(MockRegistry, ());
     let treasury = Address::generate(&env);
     let buyer = Address::generate(&env);
