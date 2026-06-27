@@ -139,6 +139,8 @@ enum DataKey {
     PurchaseNonce,
     Entitlement((BytesN<32>, Address)),
     Escrow(u64),
+    PendingAdmin,
+    CreatorTier(Address),
 }
 
 /// Contract errors
@@ -173,6 +175,9 @@ pub enum PurchaseError {
 
     // Escrow errors
     EscrowLocked = 50,
+
+    // Admin transfer errors
+    NoPendingAdminTransfer = 60,
 }
 
 /// Event: purchase.completed
@@ -249,6 +254,32 @@ pub struct EscrowReleasedEvent {
     pub material_id: BytesN<32>,
     pub asset: Address,
     pub amount: i128,
+}
+
+/// Event: admin.transfer_initiated
+#[contractevent(topics = ["admin", "transfer_initiated"], data_format = "vec")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferInitiatedEvent {
+    #[topic]
+    pub from: Address,
+    pub pending_admin: Address,
+}
+
+/// Event: admin.transfer_accepted
+#[contractevent(topics = ["admin", "transfer_accepted"], data_format = "vec")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferAcceptedEvent {
+    #[topic]
+    pub new_admin: Address,
+}
+
+/// Event: creator.tier_updated
+#[contractevent(topics = ["creator", "tier_updated"], data_format = "vec")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreatorTierUpdatedEvent {
+    #[topic]
+    pub creator: Address,
+    pub tier: CreatorTier,
 }
 
 /// The PurchaseManager contract
