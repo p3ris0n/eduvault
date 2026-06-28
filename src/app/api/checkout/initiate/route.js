@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getUserFromCookie } from "@/lib/api/auth";
 import { applyTaxToCheckout } from '@/lib/checkout/taxEstimator';
 import { getDb } from '@/lib/mongodb';
+import { findMaterial, verifyDiscount } from '@/lib/checkout/discountVerifier';
 import { checkBuyerTrustline } from '@/lib/stellar/horizonClient';
 
 /**
@@ -18,7 +19,7 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    const { materialId, amount, asset, buyerIp, buyerCountry } = body;
+    const { materialId, amount, asset, buyerIp, buyerCountry, discountCode } = body;
 
     // Validate required fields
     if (!materialId) {
@@ -33,6 +34,23 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Missing asset' }, { status: 400 });
     }
 
+    // Resolve material to verify standard pricing and prevent price tampering
+    const material = await findMaterial(materialId);
+    let basePrice = amount;
+    if (material) {
+      basePrice = material.price;
+    }
+
+    // Verify discount code if supplied
+    let verifiedDiscount = null;
+    let finalBaseAmount = basePrice;
+    if (discountCode) {
+      const discountResult = await verifyDiscount(discountCode, materialId);
+      if (discountResult.valid) {
+        verifiedDiscount = discountResult.discount;
+        const discountPercent = discountResult.discountAmountPercent || 0;
+        finalBaseAmount = basePrice * (1 - discountPercent / 100);
+      }
     const buyerAddress = user.walletAddress || user.address || user.id;
 
     // Verify buyer holds an active trustline for the payment asset
@@ -51,10 +69,10 @@ export async function POST(req) {
     // Get buyer IP from request if not provided
     const ipAddress = buyerIp || req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('x-real-ip') || null;
 
-    // Apply tax estimation
+    // Apply tax estimation to the verified and discounted base amount
     const checkoutWithTax = await applyTaxToCheckout({
       materialId,
-      amount,
+      amount: finalBaseAmount,
       asset,
       buyerIp: ipAddress,
       buyerCountry,
@@ -65,6 +83,11 @@ export async function POST(req) {
     const db = await getDb();
     const checkoutIntent = {
       materialId,
+      buyerAddress: user.walletAddress || user.address || user.id,
+      originalAmount: basePrice,
+      discountCode: discountCode || null,
+      discountPercentage: verifiedDiscount ? (verifiedDiscount.percentage || 0) : 0,
+      discountAmount: basePrice - finalBaseAmount,
       buyerAddress,
       originalAmount: amount,
       taxAmount: checkoutWithTax.taxAmount,
@@ -86,6 +109,10 @@ export async function POST(req) {
         ...checkoutWithTax,
         checkoutId: result.insertedId,
         expiresAt: checkoutIntent.expiresAt,
+        discountCode: checkoutIntent.discountCode,
+        discountPercentage: checkoutIntent.discountPercentage,
+        discountAmount: checkoutIntent.discountAmount,
+        originalAmount: checkoutIntent.originalAmount,
       },
     }, { status: 201 });
   } catch (err) {
