@@ -181,12 +181,34 @@ export default function UploadForm() {
         formData.append("visibility", visibility);
         formData.append("owner", address);
 
-        // 1. Upload to Pinata
-        uploadData = await uploadFileMutation.mutateAsync(formData);
+        // 1. Upload to Pinata with retry logic
+        let attempt = 0;
+        const maxAttempts = 3;
+        const initialDelay = 1000;
 
-        if (!uploadData?.metadata) {
-          throw new Error("File upload failed");
+        while (true) {
+          attempt++;
+          try {
+            uploadData = await uploadFileMutation.mutateAsync(formData);
+            
+            if (uploadData?.metadata) {
+              break; // Success!
+            }
+            throw new Error("File upload failed: No metadata returned");
+          } catch (err) {
+            const isRetriableStatus = !err.status || [429, 500, 502, 503, 504].includes(err.status);
+            if (attempt >= maxAttempts || !isRetriableStatus) {
+              throw err;
+            }
+          }
+
+          const backoffDelay = initialDelay * Math.pow(2, attempt - 1);
+          console.warn(`Upload attempt ${attempt} failed. Retrying in ${backoffDelay}ms...`);
+          setError(`Upload attempt ${attempt} failed. Retrying...`);
+          await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+          setError(null);
         }
+
         setSavedUploadData(uploadData);
       }
 
@@ -232,10 +254,24 @@ export default function UploadForm() {
       setSavedUploadData(null);
     } catch (err) {
       console.error("Upload Error:", err);
-      setError(err?.message || "Something went wrong. Please try again.");
+      let friendlyError = err?.message || "Something went wrong. Please try again.";
+      if (friendlyError.includes("exceeds the 10MB limit") || friendlyError.includes("exceeds the 50MB limit")) {
+        friendlyError = "The selected document exceeds the file size limit. Please choose a smaller file.";
+      } else if (friendlyError.includes("exceeds the 5MB limit")) {
+        friendlyError = "The selected thumbnail exceeds the 5MB limit. Please choose a smaller image.";
+      } else if (friendlyError.includes("Unsupported file type") || friendlyError.includes("Unsupported file format")) {
+        friendlyError = "The file type is not supported. Please upload a PDF, Word document, Excel sheet, PowerPoint presentation, text file, or ZIP archive.";
+      } else if (friendlyError.includes("Unsupported thumbnail type")) {
+        friendlyError = "The thumbnail image format is not supported. Please use JPG, PNG, or WEBP.";
+      } else if (friendlyError.includes("fetch") || friendlyError.includes("Failed to fetch") || friendlyError.toLowerCase().includes("network")) {
+        friendlyError = "Network error: Could not reach the upload server. Please check your internet connection.";
+      } else if (friendlyError.toLowerCase().includes("too many requests") || friendlyError.toLowerCase().includes("rate limit") || friendlyError.includes("429")) {
+        friendlyError = "Rate limit exceeded: You've made too many requests. Please wait a bit and try again.";
+      }
+      setError(friendlyError);
       failTransaction(err instanceof Error ? err : new Error(String(err)), {
         title: "Publish failed",
-        message: err?.message || "Something went wrong. Please try again.",
+        message: friendlyError,
         retryable: true,
       });
     }

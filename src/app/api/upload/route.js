@@ -3,6 +3,7 @@ import { auditLog } from '@/lib/api/audit'
 import { withApiHardening } from '@/lib/api/hardening'
 import { normalizeStringList, sanitizeObject, validateUploadPayload, validateUploadFileMetadata } from '@/lib/api/validation'
 import { pinata } from '@/lib/pinata'
+import { validatePinataResponse, validateGatewayUrl, retryWithBackoff } from '@/lib/api/storage'
 import { getDb } from '@/lib/mongodb'
 
 export const dynamic = 'force-dynamic'
@@ -168,6 +169,78 @@ export async function POST(request) {
         const results = {}
 
         // 4️⃣ Upload the main file
+        try {
+          const uploadedFile = await retryWithBackoff(
+            () => pinata.upload.public.file(file),
+            3,
+            1000,
+            (err, attempt) => {
+              console.warn(`[Storage] Document upload attempt ${attempt} failed: ${err.message}`);
+            }
+          )
+          validatePinataResponse(uploadedFile, 'document')
+          
+          const fileUrl = await retryWithBackoff(
+            () => pinata.gateways.public.convert(uploadedFile.cid),
+            3,
+            1000,
+            (err, attempt) => {
+              console.warn(`[Storage] Document gateway conversion attempt ${attempt} failed: ${err.message}`);
+            }
+          )
+          validateGatewayUrl(fileUrl, 'document')
+          results.fileUrl = fileUrl
+          results.storageKey = uploadedFile.cid
+        } catch (err) {
+          auditLog({
+            event: 'upload_failed',
+            route: 'upload',
+            method: 'POST',
+            status: 500,
+            reason: `document_upload_failure: ${err.message}`,
+          })
+          return NextResponse.json(
+            { error: `Failed to upload document to storage: ${err.message}` },
+            { status: 500 }
+          )
+        }
+
+        // 5️⃣ Upload thumbnail (if provided)
+        if (image) {
+          try {
+            const fileThumb = await retryWithBackoff(
+              () => pinata.upload.public.file(image),
+              3,
+              1000,
+              (err, attempt) => {
+                console.warn(`[Storage] Thumbnail upload attempt ${attempt} failed: ${err.message}`);
+              }
+            )
+            validatePinataResponse(fileThumb, 'thumbnail')
+
+            const imgUrl = await retryWithBackoff(
+              () => pinata.gateways.public.convert(fileThumb.cid),
+              3,
+              1000,
+              (err, attempt) => {
+                console.warn(`[Storage] Thumbnail gateway conversion attempt ${attempt} failed: ${err.message}`);
+              }
+            )
+            validateGatewayUrl(imgUrl, 'thumbnail')
+            results.imgUrl = imgUrl
+          } catch (err) {
+            auditLog({
+              event: 'upload_failed',
+              route: 'upload',
+              method: 'POST',
+              status: 500,
+              reason: `thumbnail_upload_failure: ${err.message}`,
+            })
+            return NextResponse.json(
+              { error: `Failed to upload thumbnail to storage: ${err.message}` },
+              { status: 500 }
+            )
+          }
         const uploadedFile = await pinata.upload.public.file(file)
         const fileUrl = await pinata.gateways.public.convert(uploadedFile.cid)
         results.fileUrl = fileUrl
@@ -221,7 +294,7 @@ export async function POST(request) {
             maxItems: 6,
             maxLength: 280,
           }),
-          storageKey: uploadedFile.cid,
+          storageKey: results.storageKey,
           fileUrl: results.fileUrl,
           image: results.imgUrl || null,
           timestamp: new Date().toISOString(),
@@ -234,6 +307,40 @@ export async function POST(request) {
         })
 
         // 7️⃣ Upload metadata JSON to Pinata
+        try {
+          const uploadedJson = await retryWithBackoff(
+            () => pinata.upload.public.json(metadataJSON),
+            3,
+            1000,
+            (err, attempt) => {
+              console.warn(`[Storage] Metadata upload attempt ${attempt} failed: ${err.message}`);
+            }
+          )
+          validatePinataResponse(uploadedJson, 'metadata')
+
+          const jsonUrl = await retryWithBackoff(
+            () => pinata.gateways.public.convert(uploadedJson.cid),
+            3,
+            1000,
+            (err, attempt) => {
+              console.warn(`[Storage] Metadata gateway conversion attempt ${attempt} failed: ${err.message}`);
+            }
+          )
+          validateGatewayUrl(jsonUrl, 'metadata')
+          results.metadataUrl = jsonUrl
+        } catch (err) {
+          auditLog({
+            event: 'upload_failed',
+            route: 'upload',
+            method: 'POST',
+            status: 500,
+            reason: `metadata_upload_failure: ${err.message}`,
+          })
+          return NextResponse.json(
+            { error: `Failed to publish metadata to storage: ${err.message}` },
+            { status: 500 }
+          )
+        }
         const uploadedJson = await pinata.upload.public.json(metadataJSON)
         const jsonUrl = await pinata.gateways.public.convert(uploadedJson.cid)
         results.metadataUrl = jsonUrl
@@ -245,6 +352,11 @@ export async function POST(request) {
           status: 200,
         })
 
+        // 8️⃣ Return the CID as storageKey and also include URLs for backwards-compatibility
+        return NextResponse.json({
+          success: true,
+          storageKey: results.storageKey,
+          fileUrl: results.fileUrl,
         // 8️⃣ Return the CID as storageKey
         return NextResponse.json({
           success: true,
@@ -260,6 +372,10 @@ export async function POST(request) {
           status: 500,
           reason: err.message,
         })
+        return NextResponse.json(
+          { error: err.message || 'Upload failed' },
+          { status: 500 }
+        )
         
         // Fallback: save to MongoDB pending_pins
         try {
