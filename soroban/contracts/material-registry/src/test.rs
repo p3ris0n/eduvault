@@ -6,16 +6,38 @@ use super::*;
 use soroban_sdk::testutils::{Address as _, Events as _};
 use soroban_sdk::{vec, Event};
 
-fn install_and_init_contract(env: &Env) -> (Address, MaterialRegistryClient<'_>, Address, Address, Address) {
+fn install_and_init_contract(
+    env: &Env,
+) -> (
+    Address,
+    MaterialRegistryClient<'_>,
+    Address,
+    Address,
+    Address,
+) {
     let contract_id = env.register(MaterialRegistry, ());
     let client = MaterialRegistryClient::new(env, &contract_id);
     let admin = Address::generate(env);
     let xlm = Address::generate(env);
     let usdc = Address::generate(env);
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&DataKey::UpgradeAdmin, &admin);
-        env.storage().persistent().set(&DataKey::AllowedAsset(xlm.clone()), &AllowedAssetInfo { kind: AssetKind::Native, enabled: true });
-        env.storage().persistent().set(&DataKey::AllowedAsset(usdc.clone()), &AllowedAssetInfo { kind: AssetKind::Token, enabled: true });
+        env.storage()
+            .persistent()
+            .set(&DataKey::UpgradeAdmin, &admin);
+        env.storage().persistent().set(
+            &DataKey::AllowedAsset(xlm.clone()),
+            &AllowedAssetInfo {
+                kind: AssetKind::Native,
+                enabled: true,
+            },
+        );
+        env.storage().persistent().set(
+            &DataKey::AllowedAsset(usdc.clone()),
+            &AllowedAssetInfo {
+                kind: AssetKind::Token,
+                enabled: true,
+            },
+        );
     });
     (contract_id, client, admin, xlm, usdc)
 }
@@ -104,7 +126,6 @@ fn seed_material(
     record
 }
 
-
 #[test]
 fn initializes_successfully() {
     let env = Env::default();
@@ -112,11 +133,17 @@ fn initializes_successfully() {
     let client = MaterialRegistryClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let asset = Address::generate(&env);
-    let initial_assets = vec![&env, InitialAsset { asset: asset.clone(), kind: AssetKind::Token }];
-    
+    let initial_assets = vec![
+        &env,
+        InitialAsset {
+            asset: asset.clone(),
+            kind: AssetKind::Token,
+        },
+    ];
+
     env.mock_all_auths();
     client.initialize(&admin, &initial_assets);
-    
+
     assert_eq!(client.get_upgrade_admin(), Some(admin));
     assert!(client.is_asset_allowed(&asset));
 }
@@ -671,5 +698,3 @@ fn non_admin_cannot_set_asset_allowed() {
     let result = client.try_set_asset_allowed(&intruder, &asset, &AssetKind::Token, &true);
     assert_eq!(result, Err(Ok(RegistryError::NotAuthorized)));
 }
-
-

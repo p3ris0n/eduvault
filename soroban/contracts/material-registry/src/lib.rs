@@ -229,7 +229,7 @@ impl MaterialRegistry {
                 enabled: true,
             }
             .publish(&env);
-            
+
             index += 1;
         }
 
@@ -699,7 +699,6 @@ fn get_allowed_asset_info(env: &Env, asset: &Address) -> Option<AllowedAssetInfo
 /// Validate that every asset referenced in `quotes` is present in the
 /// allowlist and currently enabled.
 fn validate_quote_assets(env: &Env, quotes: &Vec<AssetQuote>) -> Result<(), RegistryError> {
-
     let mut index = 0;
     while index < quotes.len() {
         let quote = quotes.get_unchecked(index);
