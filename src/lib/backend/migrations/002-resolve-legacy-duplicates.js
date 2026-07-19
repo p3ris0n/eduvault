@@ -422,7 +422,7 @@ async function restoreArchivedDocuments({
   return restored;
 }
 
-export default {
+const migration = {
   version: 2,
 
   name: "resolve-legacy-duplicates",
@@ -593,7 +593,8 @@ export default {
       "[migration:002] Archived duplicates restored",
       {
         restored,
-      },
     );
   },
 };
+
+export default migration;

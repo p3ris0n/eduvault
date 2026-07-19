@@ -112,6 +112,12 @@ export async function pingDatabase() {
   await db.command({ ping: 1 });
 
   return true;
+}
+
+export async function ensureDatabaseIndexes() {
+  try {
+    const db = await getDb();
+    const collection = db.collection("materials");
     // Create compound index for title, description, price, and category
     await collection.createIndex(
       { category: 1, price: 1, title: 1, description: 1 },
