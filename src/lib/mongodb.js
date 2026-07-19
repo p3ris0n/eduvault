@@ -4,6 +4,7 @@ import { ensureChallengeIndexes } from "@/lib/auth/challenge";
 
 const globalForMongo = globalThis;
 
+export function getClientPromise() {
 function parsePositiveInteger(value, fallback, variableName) {
   const parsed = Number.parseInt(value ?? String(fallback), 10);
 
