@@ -13,6 +13,7 @@ import { broadcastPurchaseEvent } from '@/lib/webhooks/sender';
 import { getLatestManifest } from "@/lib/provenance/registry";
 import { insertOutboxEvent, OUTBOX_EVENT_TYPES } from '@/lib/outbox';
 import { PURCHASE_STATES } from '@/lib/purchases/stateMachine';
+import { verifyPurchaseTransaction, PurchaseVerificationError } from '@/lib/purchases/chainVerifier';
 
 export async function GET(req) {
   try {
@@ -49,7 +50,7 @@ export async function POST(req) {
     const buyerAddress = normalizeBuyerAddress(
       user?.walletAddress || user?.address || user?.id || bodyBuyerAddress
     );
-    const paymentCompleted = Boolean(transactionHash || signedXdr);
+    const paymentCompleted = Boolean(transactionHash);
 
     if (!materialId) {
       return NextResponse.json({ error: "Missing materialId" }, { status: 400 });
@@ -57,6 +58,22 @@ export async function POST(req) {
 
     if (!buyerAddress) {
       return NextResponse.json({ error: user ? "Missing buyer address" : "Unauthorized" }, { status: user ? 400 : 401 });
+    }
+
+    if (signedXdr && !transactionHash) {
+      return NextResponse.json({ error: "A signed envelope is not proof of settlement" }, { status: 422 });
+    }
+
+    let chainReceipt = null;
+    if (transactionHash) {
+      try {
+        chainReceipt = await verifyPurchaseTransaction({ transactionHash, buyerAddress, materialId, asset, amount });
+      } catch (error) {
+        if (error instanceof PurchaseVerificationError) {
+          return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+        }
+        throw error;
+      }
     }
 
     session = client.startSession();
@@ -185,6 +202,7 @@ export async function POST(req) {
         userEmail: email || null,
         status: paymentCompleted ? PURCHASE_STATES.CONFIRMED : PURCHASE_STATES.PENDING,
         transactionHash: transactionHash || null,
+        chainReceipt,
         signedXdr: signedXdr || null,
         amount: amount ?? null,
         asset: asset || null,
@@ -242,6 +260,7 @@ export async function POST(req) {
       userEmail: email || null,
       status: paymentCompleted ? 'confirmed' : 'pending',
       transactionHash: transactionHash || null,
+      chainReceipt,
       signedXdr: signedXdr || null,
       amount: amount ?? null,
       asset: asset || null,
