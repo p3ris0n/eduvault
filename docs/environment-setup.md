@@ -72,4 +72,7 @@ Run focused checks before opening a pull request, and add broader checks when yo
 
 - `npm run indexer:stellar` starts the Stellar indexer prototype.
 - `node scripts/reprocess-deadletter.mjs` retries dead-lettered indexer events.
+- `npm run indexer:repair -- 100` reconciles at most 100 legacy, interrupted,
+  or failed event receipts. The command is bounded and safe to rerun because
+  projections are idempotent.
 - `node scripts/backup-mongodb.mjs` runs the MongoDB backup helper when configured.
