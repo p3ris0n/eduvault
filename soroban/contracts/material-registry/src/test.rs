@@ -4,7 +4,7 @@ extern crate std;
 
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events as _};
-use soroban_sdk::{vec, Event};
+use soroban_sdk::{vec, Event, IntoVal};
 
 fn install_and_init_contract(
     env: &Env,
@@ -706,13 +706,17 @@ fn version_manifest_digest(env: &Env, value: u8) -> BytesN<32> {
 }
 
 fn version_file_cid(env: &Env, version: u32) -> String {
-    String::from_str(env, &format!("QmVersion{}", version))
+    if version == 1 {
+        String::from_str(env, "QmVersion1")
+    } else {
+        String::from_str(env, "QmVersion2")
+    }
 }
 
 #[test]
 fn publishes_version_and_emits_event() {
     let env = Env::default();
-    let (contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
+    let (_contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
     env.mock_all_auths();
 
     let creator = Address::generate(&env);
@@ -724,7 +728,6 @@ fn publishes_version_and_emits_event() {
         &default_quotes(&env, &xlm, &usdc),
         &default_payout_shares(&env),
     );
-
     let digest = version_manifest_digest(&env, 11);
     let file_cid = version_file_cid(&env, 1);
     let file_hash = version_manifest_digest(&env, 21);
@@ -738,6 +741,9 @@ fn publishes_version_and_emits_event() {
         &None,
     );
 
+    let published_events = env.events().all();
+    assert_eq!(published_events.events().len(), 1);
+
     let record = client.get_version(&material_id, &1);
     assert_eq!(record.material_id, material_id);
     assert_eq!(record.version, 1);
@@ -747,15 +753,12 @@ fn publishes_version_and_emits_event() {
     assert_eq!(record.previous_version_digest, None);
     assert_eq!(record.creator, creator);
     assert!(!record.withdrawn);
-
-    let events = env.events().all();
-    assert_eq!(events.events().len(), 1);
 }
 
 #[test]
 fn publishes_chained_versions() {
     let env = Env::default();
-    let (contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
+    let (_contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
     env.mock_all_auths();
 
     let creator = Address::generate(&env);
@@ -1133,7 +1136,7 @@ fn verify_version_digest_works() {
 #[test]
 fn non_creator_cannot_publish_version() {
     let env = Env::default();
-    let (_contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
+    let (contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
     env.mock_all_auths();
 
     let creator = Address::generate(&env);
