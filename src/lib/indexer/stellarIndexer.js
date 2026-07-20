@@ -1,6 +1,7 @@
 import { COLLECTIONS } from "../backend/schemaContracts.js";
 import { incrementCounter, setGauge } from "../telemetry/metrics.js";
 import { logger } from "../logger.js";
+import { decodeContractEvent } from "./eventDecoder.js";
 
 function duplicateKey(error) {
   return error?.code === 11000;
@@ -215,7 +216,13 @@ export async function runIndexerBatch({ db, eventSource, source = "stellar", lim
   return { applied, skipped, nextCursor: batch.nextCursor || null };
 }
 
-export function createJsonRpcEventSource({ rpcUrl, contractId, fetchImpl = fetch }) {
+export function createJsonRpcEventSource({
+  rpcUrl,
+  contractId,
+  fetchImpl = fetch,
+  networkPassphrase,
+  manifestOverrides,
+}) {
   const contractIds = Array.isArray(contractId)
     ? contractId.filter(Boolean)
     : contractId
@@ -243,8 +250,31 @@ export function createJsonRpcEventSource({ rpcUrl, contractId, fetchImpl = fetch
         throw new Error(payload.error.message || "Stellar RPC getEvents failed");
       }
 
+      const rawEvents = payload.result?.events || [];
+
+      // Decode/validate each raw RPC event against the versioned schema
+      // (#7) before it reaches projection code, which expects normalized
+      // fields (`type`, `materialId`, `buyerAddress`, ...) — not raw XDR
+      // topics/values. Events that fail decoding (unknown event/version,
+      // unlisted contract, malformed payload) are logged and dropped here
+      // rather than thrown, so one bad event can't block the rest of the
+      // batch.
+      const events = [];
+      let unknownOrInvalid = 0;
+      for (const rawEvent of rawEvents) {
+        const result = decodeContractEvent(rawEvent, { networkPassphrase, manifestOverrides });
+        if (result.ok) {
+          events.push(result.event);
+        } else {
+          unknownOrInvalid += 1;
+        }
+      }
+      if (unknownOrInvalid > 0) {
+        incrementCounter("indexer_events_undecodable_total", { source: "stellar" }, unknownOrInvalid);
+      }
+
       return {
-        events: payload.result?.events || [],
+        events,
         nextCursor: payload.result?.cursor || null,
         lastLedger: payload.result?.latestLedger || null,
       };
