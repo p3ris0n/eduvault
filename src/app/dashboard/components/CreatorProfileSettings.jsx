@@ -45,18 +45,6 @@ export default function CreatorProfileSettings({ initialUser }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  useEffect(() => {
-    setForm({
-      displayName: initialUser?.fullName || "",
-      bio: initialUser?.bio || "",
-      institution: initialUser?.institution || "",
-      country: initialUser?.country || "",
-      twitterUrl: initialUser?.twitterUrl || "",
-      githubUrl: initialUser?.githubUrl || "",
-      websiteUrl: initialUser?.websiteUrl || "",
-    });
-  }, [initialUser]);
-
   const onSubmit = async (event) => {
     event.preventDefault();
     setError(null);

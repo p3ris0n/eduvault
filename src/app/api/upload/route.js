@@ -241,15 +241,6 @@ export async function POST(request) {
               { status: 500 }
             )
           }
-        const uploadedFile = await pinata.upload.public.file(file)
-        const fileUrl = await pinata.gateways.public.convert(uploadedFile.cid)
-        results.fileUrl = fileUrl
-
-        // 5️⃣ Upload thumbnail (if provided)
-        if (image) {
-          const fileThumb = await pinata.upload.public.file(image)
-          const imgUrl = await pinata.gateways.public.convert(fileThumb.cid)
-          results.imgUrl = imgUrl
         }
 
         // 6️⃣ Prepare the rest of the form data as JSON
@@ -341,9 +332,6 @@ export async function POST(request) {
             { status: 500 }
           )
         }
-        const uploadedJson = await pinata.upload.public.json(metadataJSON)
-        const jsonUrl = await pinata.gateways.public.convert(uploadedJson.cid)
-        results.metadataUrl = jsonUrl
 
         auditLog({
           event: 'upload_complete',
@@ -357,10 +345,6 @@ export async function POST(request) {
           success: true,
           storageKey: results.storageKey,
           fileUrl: results.fileUrl,
-        // 8️⃣ Return the CID as storageKey
-        return NextResponse.json({
-          success: true,
-          storageKey: uploadedFile.cid,
           image: results.imgUrl || '',
           metadata: results.metadataUrl,
         })
@@ -372,11 +356,7 @@ export async function POST(request) {
           status: 500,
           reason: err.message,
         })
-        return NextResponse.json(
-          { error: err.message || 'Upload failed' },
-          { status: 500 }
-        )
-        
+
         // Fallback: save to MongoDB pending_pins
         try {
           const db = await getDb()
