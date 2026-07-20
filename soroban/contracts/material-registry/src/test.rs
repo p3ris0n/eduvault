@@ -732,14 +732,7 @@ fn publishes_version_and_emits_event() {
     let file_cid = version_file_cid(&env, 1);
     let file_hash = version_manifest_digest(&env, 21);
 
-    client.publish_version(
-        &material_id,
-        &1,
-        &digest,
-        &file_cid,
-        &file_hash,
-        &None,
-    );
+    client.publish_version(&material_id, &1, &digest, &file_cid, &file_hash, &None);
 
     let published_events = env.events().all();
     assert_eq!(published_events.events().len(), 1);
@@ -852,24 +845,12 @@ fn rejects_version_zero_and_out_of_range() {
     let file_cid = version_file_cid(&env, 1);
     let file_hash = version_manifest_digest(&env, 21);
 
-    let result = client.try_publish_version(
-        &material_id,
-        &0,
-        &digest,
-        &file_cid,
-        &file_hash,
-        &None,
-    );
+    let result =
+        client.try_publish_version(&material_id, &0, &digest, &file_cid, &file_hash, &None);
     assert_eq!(result, Err(Ok(RegistryError::InvalidVersionNumber)));
 
-    let result = client.try_publish_version(
-        &material_id,
-        &10001,
-        &digest,
-        &file_cid,
-        &file_hash,
-        &None,
-    );
+    let result =
+        client.try_publish_version(&material_id, &10001, &digest, &file_cid, &file_hash, &None);
     assert_eq!(result, Err(Ok(RegistryError::InvalidVersionNumber)));
 }
 
@@ -893,14 +874,8 @@ fn rejects_empty_file_cid() {
     let empty_cid = String::from_str(&env, "");
     let file_hash = version_manifest_digest(&env, 21);
 
-    let result = client.try_publish_version(
-        &material_id,
-        &1,
-        &digest,
-        &empty_cid,
-        &file_hash,
-        &None,
-    );
+    let result =
+        client.try_publish_version(&material_id, &1, &digest, &empty_cid, &file_hash, &None);
     assert_eq!(result, Err(Ok(RegistryError::InvalidFileCid)));
 }
 
@@ -969,14 +944,7 @@ fn rejects_v2_without_previous_digest() {
     let cid_v2 = version_file_cid(&env, 2);
     let hash_v2 = version_manifest_digest(&env, 22);
 
-    let result = client.try_publish_version(
-        &material_id,
-        &2,
-        &digest_v2,
-        &cid_v2,
-        &hash_v2,
-        &None,
-    );
+    let result = client.try_publish_version(&material_id, &2, &digest_v2, &cid_v2, &hash_v2, &None);
     assert_eq!(result, Err(Ok(RegistryError::VersionChainBroken)));
 }
 
@@ -1043,7 +1011,10 @@ fn withdraw_version_blocks_subsequent_versions() {
 
     let v1 = client.get_version(&material_id, &1);
     assert!(v1.withdrawn);
-    assert_eq!(v1.withdrawal_reason, String::from_str(&env, "security recall"));
+    assert_eq!(
+        v1.withdrawal_reason,
+        String::from_str(&env, "security recall")
+    );
 
     // Cannot publish v2 chaining from withdrawn v1
     let digest_v2 = version_manifest_digest(&env, 12);
@@ -1125,11 +1096,7 @@ fn verify_version_digest_works() {
     assert!(!client.verify_version_digest(&material_id, &1, &version_manifest_digest(&env, 99)));
 
     // Non-existent version
-    let result = client.try_verify_version_digest(
-        &material_id,
-        &2,
-        &digest,
-    );
+    let result = client.try_verify_version_digest(&material_id, &2, &digest);
     assert_eq!(result, Err(Ok(RegistryError::VersionNotFound)));
 }
 
@@ -1173,13 +1140,7 @@ fn non_creator_cannot_publish_version() {
         },
     }]);
 
-    let result = client.try_publish_version(
-        &material_id,
-        &1,
-        &digest,
-        &file_cid,
-        &file_hash,
-        &None,
-    );
+    let result =
+        client.try_publish_version(&material_id, &1, &digest, &file_cid, &file_hash, &None);
     assert!(result.is_err());
 }
