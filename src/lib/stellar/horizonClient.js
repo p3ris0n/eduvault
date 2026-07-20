@@ -72,9 +72,21 @@ const KNOWN_USDC_ISSUERS = {
 };
 
 function buildServer(url) {
-  return new Horizon.Server(url, {
+  const options = {
     allowHttp: url.startsWith("http://"),
-  });
+  };
+
+  try {
+    return new Horizon.Server(url, options);
+  } catch (error) {
+    if (
+      error instanceof TypeError &&
+      String(error.message || "").includes("not a constructor")
+    ) {
+      return Horizon.Server(url, options);
+    }
+    throw error;
+  }
 }
 
 function isTransientError(error) {

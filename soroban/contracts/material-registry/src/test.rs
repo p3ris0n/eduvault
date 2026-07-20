@@ -4,7 +4,8 @@ extern crate std;
 
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events as _};
-use soroban_sdk::{vec, Event};
+use soroban_sdk::{vec, Event, IntoVal};
+use std::format;
 
 fn install_and_init_contract(
     env: &Env,
@@ -712,7 +713,7 @@ fn version_file_cid(env: &Env, version: u32) -> String {
 #[test]
 fn publishes_version_and_emits_event() {
     let env = Env::default();
-    let (contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
+    let (_contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
     env.mock_all_auths();
 
     let creator = Address::generate(&env);
@@ -737,6 +738,7 @@ fn publishes_version_and_emits_event() {
         &file_hash,
         &None,
     );
+    let events = env.events().all();
 
     let record = client.get_version(&material_id, &1);
     assert_eq!(record.material_id, material_id);
@@ -748,14 +750,13 @@ fn publishes_version_and_emits_event() {
     assert_eq!(record.creator, creator);
     assert!(!record.withdrawn);
 
-    let events = env.events().all();
     assert_eq!(events.events().len(), 1);
 }
 
 #[test]
 fn publishes_chained_versions() {
     let env = Env::default();
-    let (contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
+    let (_contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
     env.mock_all_auths();
 
     let creator = Address::generate(&env);
@@ -1133,7 +1134,7 @@ fn verify_version_digest_works() {
 #[test]
 fn non_creator_cannot_publish_version() {
     let env = Env::default();
-    let (_contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
+    let (contract_id, client, _admin, xlm, usdc) = install_and_init_contract(&env);
     env.mock_all_auths();
 
     let creator = Address::generate(&env);
