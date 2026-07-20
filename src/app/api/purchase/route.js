@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { getDb } from '@/lib/mongodb'
+import { getDb, getClientPromise } from '@/lib/mongodb'
 import { NextResponse } from 'next/server'
 import { getUserFromCookie } from "@/lib/api/auth";
 import { createEntitlement } from '@/lib/entitlement';
@@ -11,6 +11,8 @@ import {
 } from "@/lib/purchases/access";
 import { broadcastPurchaseEvent } from '@/lib/webhooks/sender';
 import { getLatestManifest } from "@/lib/provenance/registry";
+import { insertOutboxEvent, OUTBOX_EVENT_TYPES } from '@/lib/outbox';
+import { PURCHASE_STATES } from '@/lib/purchases/stateMachine';
 
 export async function GET(req) {
   try {
@@ -36,9 +38,11 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
+  let session = null;
   try {
     const user = await getUserFromCookie(req);
     const db = await getDb();
+    const client = await getClientPromise();
     const body = await req.json();
 
     const { materialId, signedXdr, email, transactionHash, amount, asset, buyerAddress: bodyBuyerAddress } = body;
@@ -55,30 +59,68 @@ export async function POST(req) {
       return NextResponse.json({ error: user ? "Missing buyer address" : "Unauthorized" }, { status: user ? 400 : 401 });
     }
 
-    // Prevent duplicate purchases
-    const existing = await db
-      .collection('purchases')
-      .findOne({ buyerAddress, materialId });
-    if (existing) {
-      if (isCompletedPurchaseStatus(existing.status)) {
+    session = client.startSession();
+
+    let purchaseResponse;
+
+    await session.withTransaction(async () => {
+      // Prevent duplicate purchases
+      const existing = await db
+        .collection('purchases')
+        .findOne({ buyerAddress, materialId }, { session });
+
+      if (existing) {
+        if (isCompletedPurchaseStatus(existing.status) || existing.status === PURCHASE_STATES.CONFIRMED) {
+          await createEntitlement(materialId, buyerAddress, {
+            purchaseId: String(existing._id),
+            transactionHash: existing.transactionHash,
+            session,
+          });
+          const access = await getMaterialAccessStatus(db, materialId, buyerAddress);
+          purchaseResponse = {
+            status: 200,
+            body: { message: 'Already purchased', purchase: existing, access, transactionHash: existing.transactionHash }
+          };
+          return;
+        }
+
+        if (!paymentCompleted) {
+          const access = await getMaterialAccessStatus(db, materialId, buyerAddress);
+          purchaseResponse = {
+            status: 202,
+            body: { message: 'Payment pending', purchase: existing, access }
+          };
+          return;
+        }
+
+        const now = new Date();
+        await db.collection('purchases').updateOne(
+          { _id: existing._id },
+          {
+            $set: {
+              status: PURCHASE_STATES.CONFIRMED,
+              transactionHash: transactionHash || existing.transactionHash || null,
+              signedXdr: signedXdr || existing.signedXdr || null,
+              amount: amount ?? existing.amount ?? null,
+              asset: asset || existing.asset || null,
+              userEmail: email || existing.userEmail || null,
+              purchasedAt: existing.purchasedAt || now,
+              confirmedAt: now,
+              updatedAt: now,
+            },
+          },
+          { session }
+        );
+
+        const purchase = await db.collection('purchases').findOne({ _id: existing._id }, { session });
+        
         await createEntitlement(materialId, buyerAddress, {
           purchaseId: String(existing._id),
-          transactionHash: existing.transactionHash,
+          transactionHash: transactionHash || existing.transactionHash || null,
+          session,
         });
-        const access = await getMaterialAccessStatus(db, materialId, buyerAddress);
-        return NextResponse.json(
-          { message: 'Already purchased', purchase: existing, access, transactionHash: existing.transactionHash },
-          { status: 200 }
-        );
-      }
 
-      if (!paymentCompleted) {
         const access = await getMaterialAccessStatus(db, materialId, buyerAddress);
-        return NextResponse.json(
-          { message: 'Payment pending', purchase: existing, access },
-          { status: 202 }
-        );
-      }
 
       const now = new Date();
 
@@ -114,27 +156,67 @@ export async function POST(req) {
             confirmedAt: now,
             updatedAt: now,
           },
+        if (paymentCompleted) {
+          await insertOutboxEvent(db, session, {
+            type: OUTBOX_EVENT_TYPES.SEND_PURCHASE_WEBHOOK,
+            payload: {
+              materialId,
+              buyerAddress,
+              amount: amount ?? existing.amount,
+              asset: asset || existing.asset,
+              transactionHash: transactionHash || existing.transactionHash,
+            },
+            idempotencyKey: `webhook_${existing._id}_${transactionHash || 'nohash'}`,
+          });
         }
-      );
 
-      const purchase = await db.collection('purchases').findOne({ _id: existing._id });
-      const access = await getMaterialAccessStatus(db, materialId, buyerAddress);
-
-      if (paymentCompleted) {
-        // Fire webhook asynchronously
-        broadcastPurchaseEvent(materialId, {
-          buyerAddress,
-          amount: amount ?? existing.amount,
-          asset: asset || existing.asset,
-          transactionHash: transactionHash || existing.transactionHash
-        });
+        purchaseResponse = {
+          status: 200,
+          body: { success: true, purchaseId: existing._id, purchase, access, transactionHash: purchase?.transactionHash }
+        };
+        return;
       }
 
-      return NextResponse.json(
-        { success: true, purchaseId: existing._id, purchase, access, transactionHash: purchase?.transactionHash },
-        { status: 200 }
-      );
-    }
+      const now = new Date();
+
+      const purchaseRecord = {
+        materialId,
+        buyerAddress,
+        userEmail: email || null,
+        status: paymentCompleted ? PURCHASE_STATES.CONFIRMED : PURCHASE_STATES.PENDING,
+        transactionHash: transactionHash || null,
+        signedXdr: signedXdr || null,
+        amount: amount ?? null,
+        asset: asset || null,
+        purchasedAt: paymentCompleted ? now : null,
+        confirmedAt: paymentCompleted ? now : null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const result = await db.collection('purchases').insertOne(purchaseRecord, { session });
+      purchaseRecord._id = result.insertedId;
+      
+      let access;
+      if (paymentCompleted) {
+        await createEntitlement(materialId, buyerAddress, {
+          purchaseId: String(result.insertedId),
+          transactionHash: transactionHash || null,
+          session,
+        });
+
+        await insertOutboxEvent(db, session, {
+          type: OUTBOX_EVENT_TYPES.SEND_PURCHASE_WEBHOOK,
+          payload: {
+            materialId,
+            buyerAddress,
+            amount: amount ?? null,
+            asset: asset || null,
+            transactionHash: transactionHash || null,
+          },
+          idempotencyKey: `webhook_${result.insertedId}_${transactionHash || 'nohash'}`,
+        });
+      }
 
     const now = new Date();
 
@@ -179,17 +261,21 @@ export async function POST(req) {
         purchaseId: String(result.insertedId),
         transactionHash: transactionHash || null,
       });
+      access = await getMaterialAccessStatus(db, materialId, buyerAddress);
 
-      // Fire webhook asynchronously
-      broadcastPurchaseEvent(materialId, purchaseRecord);
-    }
+      purchaseResponse = {
+        status: paymentCompleted ? 201 : 202,
+        body: { success: paymentCompleted, purchaseId: result.insertedId, purchase: purchaseRecord, access }
+      };
+    });
 
-    return NextResponse.json(
-      { success: paymentCompleted, purchaseId: result.insertedId, purchase: { ...purchaseRecord, _id: result.insertedId }, access },
-      { status: paymentCompleted ? 201 : 202 }
-    );
+    return NextResponse.json(purchaseResponse.body, { status: purchaseResponse.status });
   } catch (err) {
     console.error("POST /api/purchase error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
   }
 }
