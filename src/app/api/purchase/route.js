@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { getDb, getClientPromise } from '@/lib/mongodb'
+import { getDb, getMongoClientPromise as getClientPromise } from '@/lib/mongodb'
 import { NextResponse } from 'next/server'
 import { getUserFromCookie } from "@/lib/api/auth";
 import { createEntitlement } from '@/lib/entitlement';

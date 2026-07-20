@@ -26,7 +26,8 @@ import { getDb } from '@/lib/mongodb';
 import { getIpfsUrl } from '@/lib/config/chain';
 import { ObjectId } from 'mongodb';
 import { getManifest, getLatestManifest, isManifestWithdrawn } from '@/lib/provenance/registry';
-import { verifyManifestDigest, verifyFileCid } from '@/lib/provenance/verify';
+import { verifyManifestDigest } from '@/lib/provenance/manifest';
+import { verifyFileCid } from '@/lib/provenance/verify';
 
 export const dynamic = 'force-dynamic';
 

@@ -77,3 +77,49 @@ export async function verifyDashboardToken(token, secret) {
 export function isProtectedDashboardPath(pathname) {
   return pathname === "/dashboard" || pathname.startsWith("/dashboard/");
 }
+
+/**
+ * Validate an incoming API request's authentication.
+ * Extracts the JWT from the Authorization header (Bearer) or the
+ * "dashboard_token" cookie and verifies it against JWT_SECRET.
+ *
+ * @param {Request} request
+ * @returns {Promise<{ valid: boolean, address?: string, payload?: object, reason?: string }>}
+ */
+export async function validateAuth(request) {
+  const secret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || "";
+  if (!secret) {
+    return { valid: false, reason: "no_secret" };
+  }
+
+  // Try Authorization header first
+  let token = null;
+  const authHeader = request.headers.get("authorization") || "";
+  if (authHeader.startsWith("Bearer ")) {
+    token = authHeader.slice(7).trim();
+  }
+
+  // Fall back to cookie
+  if (!token) {
+    const cookieHeader = request.headers.get("cookie") || "";
+    const match = cookieHeader.match(/(?:^|;\s*)dashboard_token=([^;]+)/);
+    if (match) {
+      token = decodeURIComponent(match[1]);
+    }
+  }
+
+  if (!token) {
+    return { valid: false, reason: "no_token" };
+  }
+
+  const result = await verifyDashboardToken(token, secret);
+  if (!result.valid) {
+    return { valid: false, reason: result.reason };
+  }
+
+  return {
+    valid: true,
+    address: result.payload.sub,
+    payload: result.payload,
+  };
+}

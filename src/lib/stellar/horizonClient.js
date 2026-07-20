@@ -1,6 +1,15 @@
 import { Horizon } from "@stellar/stellar-sdk";
 import { HORIZON_URL, isMainnet } from "@/lib/config/chain";
-import logger from "@/lib/logger";
+
+// NOTE: We intentionally avoid importing @/lib/logger here because this module
+// is transitively bundled into client-side code (via checkoutService →
+// CheckoutInvoice → CartDrawer). The logger depends on telemetry/context.js
+// which uses node:async_hooks and node:crypto — unavailable in the browser.
+const logger = {
+  info: (...args) => console.info('[horizonClient]', ...args),
+  warn: (...args) => console.warn('[horizonClient]', ...args),
+  error: (...args) => console.error('[horizonClient]', ...args),
+};
 
 // Primary URL from config; fallback list ordered by preference.
 const PRIMARY_URL = HORIZON_URL;

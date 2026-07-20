@@ -1,5 +1,15 @@
 import { fetchFeeStats } from './horizonClient';
-import logger from '@/lib/logger';
+
+// NOTE: We intentionally avoid importing @/lib/logger here because this module
+// is transitively bundled into client-side code (via CheckoutInvoice → CartDrawer).
+// The logger depends on telemetry/context.js which uses node:async_hooks and
+// node:crypto — modules unavailable in the browser webpack build.
+const logger = {
+  info: (...args) => console.info('[checkoutService]', ...args),
+  warn: (...args) => console.warn('[checkoutService]', ...args),
+  error: (...args) => console.error('[checkoutService]', ...args),
+  debug: (...args) => console.debug('[checkoutService]', ...args),
+};
 
 // Base fee stroops (100 stroops = 0.00001 XLM per operation is Stellar's minimum)
 const BASE_FEE_STROOPS = 100;
