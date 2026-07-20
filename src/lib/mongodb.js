@@ -118,6 +118,16 @@ export async function getDb() {
   return client.db(dbName);
 }
 
+export default async function connectToDatabase() {
+  const client = await getMongoClientPromise();
+  const { dbName } = getMongoConfiguration();
+
+  return {
+    client,
+    db: client.db(dbName),
+  };
+}
+
 export async function ensureMongoIndexes() {
   const db = await getDb();
   const collection = db.collection("materials");

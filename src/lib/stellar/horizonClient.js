@@ -1,6 +1,17 @@
 import { Horizon } from "@stellar/stellar-sdk";
 import { HORIZON_URL, isMainnet } from "@/lib/config/chain";
-import logger from "@/lib/logger";
+
+const horizonLogger = {
+  warn(data, message) {
+    console.warn(message, data);
+  },
+  info(data, message) {
+    console.info(message, data);
+  },
+  error(data, message) {
+    console.error(message, data);
+  },
+};
 
 // Primary URL from config; fallback list ordered by preference.
 const PRIMARY_URL = HORIZON_URL;
@@ -190,7 +201,7 @@ export async function withFailover(
       );
 
       if (attempt > 0) {
-        logger.info(
+        horizonLogger.info(
           {
             failoverUrl: url,
             attempt: attempt + 1,
@@ -212,7 +223,7 @@ export async function withFailover(
       });
 
       if (!isTransientError(error)) {
-        logger.warn(
+        horizonLogger.warn(
           {
             url,
             error: message,
@@ -223,7 +234,7 @@ export async function withFailover(
         throw error;
       }
 
-      logger.warn(
+      horizonLogger.warn(
         {
           primaryUrl: ALL_ENDPOINTS[0],
           failedUrl: url,
@@ -308,7 +319,7 @@ export async function getFeeStats() {
   try {
     return await fetchFeeStats();
   } catch (error) {
-    logger.error(
+    horizonLogger.error(
       {
         error:
           error instanceof Error
@@ -414,7 +425,7 @@ export async function checkBuyerTrustline(
   );
 
   if (!trustline) {
-    logger.info(
+    horizonLogger.info(
       {
         publicKey,
         assetCode: normalizedAssetCode,
