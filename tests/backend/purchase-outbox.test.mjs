@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, describe, before, after, beforeEach } from "node:test";
 import { MongoClient } from "mongodb";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import * as dotenv from "dotenv";
 
 // For tests, load .env.local if present, else .env
@@ -12,8 +12,7 @@ import { insertOutboxEvent, pollOutbox, completeOutboxEvent, failOutboxEvent, OU
 import { processOutboxEvents } from "../../src/lib/backend/outboxWorker.js";
 import { closeMongoConnection } from "../../src/lib/mongodb.js";
 import { PURCHASE_STATES, canTransition } from "../../src/lib/purchases/stateMachine.js";
-// We use a mock webhook sender in tests
-import * as webhookSender from "../../src/lib/webhooks/sender.js";
+
 
 const TEST_DB = "eduvault_test_outbox";
 
@@ -25,7 +24,7 @@ let dbAvailable = false;
 describe("Purchase Outbox & State Machine", () => {
   before(async () => {
     try {
-      mongoServer = await MongoMemoryServer.create();
+      mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
       const uri = mongoServer.getUri();
       // Override env var so outboxWorker uses the in-memory db
       process.env.MONGODB_URI = uri;
@@ -131,42 +130,34 @@ describe("Purchase Outbox & State Machine", () => {
   });
 
   test("Worker execution processes events and handles mock failures", async (t) => { if (!dbAvailable) return t.skip("MongoDB not available");
-    // Override broadcastPurchaseEvent behavior for testing
-    const originalBroadcast = webhookSender.broadcastPurchaseEvent;
-    
     let calls = 0;
-    webhookSender.broadcastPurchaseEvent = async (materialId, payload) => {
+    const mockBroadcast = async (materialId, payload) => {
       calls++;
       if (payload.shouldFail) throw new Error("Mock failure");
       return true;
     };
 
-    try {
-      await insertOutboxEvent(db, null, {
-        type: OUTBOX_EVENT_TYPES.SEND_PURCHASE_WEBHOOK,
-        payload: { materialId: "m3", shouldFail: false },
-        idempotencyKey: "worker_test1",
-      });
+    await insertOutboxEvent(db, null, {
+      type: OUTBOX_EVENT_TYPES.SEND_PURCHASE_WEBHOOK,
+      payload: { materialId: "m3", shouldFail: false },
+      idempotencyKey: "worker_test1",
+    });
 
-      await insertOutboxEvent(db, null, {
-        type: OUTBOX_EVENT_TYPES.SEND_PURCHASE_WEBHOOK,
-        payload: { materialId: "m4", shouldFail: true },
-        idempotencyKey: "worker_test2",
-      });
+    await insertOutboxEvent(db, null, {
+      type: OUTBOX_EVENT_TYPES.SEND_PURCHASE_WEBHOOK,
+      payload: { materialId: "m4", shouldFail: true },
+      idempotencyKey: "worker_test2",
+    });
 
-      const processed = await processOutboxEvents();
-      assert.strictEqual(processed, 2);
-      assert.strictEqual(calls, 2);
+    const processed = await processOutboxEvents(mockBroadcast);
+    assert.strictEqual(processed, 2);
+    assert.strictEqual(calls, 2);
 
-      const successfulEvent = await db.collection("outbox").findOne({ idempotencyKey: "worker_test1" });
-      assert.strictEqual(successfulEvent.status, OUTBOX_STATUS.COMPLETED);
+    const successfulEvent = await db.collection("outbox").findOne({ idempotencyKey: "worker_test1" });
+    assert.strictEqual(successfulEvent.status, OUTBOX_STATUS.COMPLETED);
 
-      const failingEvent = await db.collection("outbox").findOne({ idempotencyKey: "worker_test2" });
-      assert.strictEqual(failingEvent.status, OUTBOX_STATUS.PENDING);
-      assert.strictEqual(failingEvent.retries, 1);
-    } finally {
-      // Restore
-      webhookSender.broadcastPurchaseEvent = originalBroadcast;
-    }
+    const failingEvent = await db.collection("outbox").findOne({ idempotencyKey: "worker_test2" });
+    assert.strictEqual(failingEvent.status, OUTBOX_STATUS.PENDING);
+    assert.strictEqual(failingEvent.retries, 1);
   });
 });
