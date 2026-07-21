@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 import { getUserFromCookie } from "@/lib/api/auth";
 import { findMaterial, verifyDiscount } from "@/lib/checkout/discountVerifier";
 import { getTaxRateForCountry } from "@/lib/checkout/taxEstimator";
@@ -174,6 +174,7 @@ export async function POST(req) {
 
 /**
  * GET /api/checkout/initiate
+ *
  * Returns the deterministic tax rate that would be used for a signed intent.
  */
 export async function GET(req) {
