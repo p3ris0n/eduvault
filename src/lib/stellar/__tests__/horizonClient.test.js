@@ -16,13 +16,11 @@ const mockFeeStats = vi.fn();
 
 vi.mock('@stellar/stellar-sdk', () => ({
   Horizon: {
-    Server: class {
-      constructor() {
-        this.submitTransaction = mockSubmit;
-        this.loadAccount = mockLoadAccount;
-        this.feeStats = mockFeeStats;
-      }
-    }
+    Server: vi.fn().mockImplementation(function () {
+      this.submitTransaction = mockSubmit;
+      this.loadAccount = mockLoadAccount;
+      this.feeStats = mockFeeStats;
+    }),
   },
 }));
 
