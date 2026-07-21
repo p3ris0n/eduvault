@@ -19,6 +19,10 @@ export const COLLECTIONS = Object.freeze({
   // Migration infrastructure.
   schemaMigrations: "_schema_migrations",
   migrationLock: "_migration_lock",
+
+  // Content provenance.
+  manifests: "material_manifests",
+  digestAnchors: "manifest_digest_anchors",
 });
 
 export const REQUIRED_INDEXES = Object.freeze({
@@ -293,6 +297,19 @@ export const REQUIRED_INDEXES = Object.freeze({
     },
   ],
 
+  reviews: [
+    {
+      name: "reviews_material_created_at",
+      keys: { materialId: 1, createdAt: -1 },
+      options: {},
+    },
+    {
+      name: "reviews_material_version",
+      keys: { materialId: 1, reviewVersion: 1 },
+      options: {},
+    },
+  ],
+
   auth_challenges: [
     {
       name: "auth_challenges_nonce_unique",
@@ -358,6 +375,42 @@ export const REQUIRED_INDEXES = Object.freeze({
       keys: { expiresAt: 1 },
       options: {
         expireAfterSeconds: 0,
+      },
+    },
+  ],
+
+  material_manifests: [
+    {
+      name: "manifests_material_version_unique",
+      keys: { materialId: 1, version: 1 },
+      options: { unique: true },
+    },
+    {
+      name: "manifests_material_digest",
+      keys: { materialId: 1, digest: 1 },
+      options: {},
+    },
+    {
+      name: "manifests_creator_created_at",
+      keys: { creator: 1, createdAt: -1 },
+      options: {},
+    },
+  ],
+
+  manifest_digest_anchors: [
+    {
+      name: "digest_anchors_material_version_unique",
+      keys: { materialId: 1, version: 1 },
+      options: { unique: true },
+    },
+    {
+      name: "digest_anchors_tx_hash",
+      keys: { chainTxHash: 1 },
+      options: {
+        unique: true,
+        partialFilterExpression: {
+          chainTxHash: { $type: "string" },
+        },
       },
     },
   ],
@@ -427,6 +480,12 @@ export const COLLECTION_VALIDATORS = Object.freeze({
         amount: {
           bsonType: ["double", "decimal", "int", "long", "null"],
           minimum: 0,
+        },
+        purchasedVersion: {
+          bsonType: ["int", "long", "null"],
+        },
+        versionBinding: {
+          bsonType: ["object", "null"],
         },
         createdAt: {
           bsonType: "date",
@@ -574,4 +633,155 @@ export const COLLECTION_VALIDATORS = Object.freeze({
       },
     },
   },
+
+  material_manifests: {
+    $jsonSchema: {
+      bsonType: "object",
+      required: [
+        "materialId",
+        "version",
+        "digest",
+        "manifest",
+        "creator",
+        "createdAt",
+        "verified",
+      ],
+      properties: {
+        materialId: {
+          bsonType: "string",
+          minLength: 1,
+        },
+        version: {
+          bsonType: "int",
+          minimum: 1,
+        },
+        digest: {
+          bsonType: "string",
+          minLength: 1,
+        },
+        manifest: {
+          bsonType: "object",
+        },
+        creator: {
+          bsonType: ["string", "null"],
+        },
+        previousVersionDigest: {
+          bsonType: ["string", "null"],
+        },
+        verified: {
+          bsonType: "bool",
+        },
+        withdrawn: {
+          bsonType: "bool",
+        },
+        createdAt: {
+          bsonType: "date",
+        },
+      },
+    },
+  },
+
+  manifest_digest_anchors: {
+    $jsonSchema: {
+      bsonType: "object",
+      required: [
+        "materialId",
+        "version",
+        "digest",
+        "anchoredAt",
+        "verified",
+      ],
+      properties: {
+        materialId: {
+          bsonType: "string",
+          minLength: 1,
+        },
+        version: {
+          bsonType: "int",
+          minimum: 1,
+        },
+        digest: {
+          bsonType: "string",
+          minLength: 1,
+        },
+        chainTxHash: {
+          bsonType: ["string", "null"],
+        },
+        ledgerSequence: {
+          bsonType: ["int", "long", "null"],
+        },
+        anchoredAt: {
+          bsonType: "date",
+        },
+        verified: {
+          bsonType: "bool",
+        },
+        createdAt: {
+          bsonType: "date",
+        },
+      },
+    },
+  },
 });
+
+export const EDITABLE_MATERIAL_FIELDS = Object.freeze([
+  "title",
+  "description",
+  "price",
+  "usageRights",
+  "visibility",
+  "thumbnailUrl",
+  "category",
+  "subject",
+  "level",
+]);
+
+export const IMMUTABLE_MATERIAL_FIELDS = Object.freeze([
+  "userAddress",
+  "creator",
+  "tokenId",
+  "txHash",
+  "chainId",
+  "storageKey",
+  "fileUrl",
+  "metadataUrl",
+  "createdAt",
+]);
+
+export function applyTimestamps(doc, now = new Date()) {
+  return {
+    ...doc,
+    createdAt: doc.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+export function buildMaterialHistoryEntry({
+  materialId,
+  previousDoc = {},
+  update = {},
+  updatedBy = null,
+  changeReason = null,
+  source = "system",
+}) {
+  const changedFields = Object.keys(update).filter((field) =>
+    EDITABLE_MATERIAL_FIELDS.includes(field),
+  );
+  const previousVersion = Number(previousDoc.version || 1);
+
+  return applyTimestamps({
+    materialId,
+    previousVersion,
+    version: previousVersion + 1,
+    changedFields,
+    before: Object.fromEntries(
+      changedFields.map((field) => [field, previousDoc[field] ?? null]),
+    ),
+    after: Object.fromEntries(
+      changedFields.map((field) => [field, update[field] ?? null]),
+    ),
+    updatedBy,
+    changeReason,
+    source,
+  });
+}
