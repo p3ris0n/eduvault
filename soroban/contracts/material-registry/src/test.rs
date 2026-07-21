@@ -5,6 +5,7 @@ extern crate std;
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events as _};
 use soroban_sdk::{vec, Event, IntoVal};
+use std::format;
 
 fn install_and_init_contract(
     env: &Env,
@@ -733,9 +734,7 @@ fn publishes_version_and_emits_event() {
     let file_hash = version_manifest_digest(&env, 21);
 
     client.publish_version(&material_id, &1, &digest, &file_cid, &file_hash, &None);
-
-    let published_events = env.events().all();
-    assert_eq!(published_events.events().len(), 1);
+    let events = env.events().all();
 
     let record = client.get_version(&material_id, &1);
     assert_eq!(record.material_id, material_id);
@@ -746,6 +745,8 @@ fn publishes_version_and_emits_event() {
     assert_eq!(record.previous_version_digest, None);
     assert_eq!(record.creator, creator);
     assert!(!record.withdrawn);
+
+    assert_eq!(events.events().len(), 1);
 }
 
 #[test]

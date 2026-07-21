@@ -26,22 +26,26 @@ import { getDb } from '@/lib/mongodb';
 import { getIpfsUrl } from '@/lib/config/chain';
 import { ObjectId } from 'mongodb';
 import { getManifest, getLatestManifest, isManifestWithdrawn } from '@/lib/provenance/registry';
-import { verifyManifestDigest } from '@/lib/provenance/manifest';
-import { verifyFileCid } from '@/lib/provenance/verify';
+import { verifyManifestDigest, verifyFileCid } from '@/lib/provenance/verify';
+import { resolveAuthenticatedWallet } from '@/lib/auth/walletIdentity';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const materialId = searchParams.get('materialId') ?? '';
-  const buyerAddress = searchParams.get('buyerAddress') ?? '';
+  const identity = await resolveAuthenticatedWallet(request);
+  if (!identity.ok) {
+    return NextResponse.json({ error: identity.error }, { status: identity.status });
+  }
+  const buyerAddress = identity.walletAddress;
   const requestedVersion = searchParams.get('version');
 
   // ── 1. Validate params ─────────────────────────────────────────────────────
 
-  if (!materialId || !buyerAddress) {
+  if (!materialId) {
     return NextResponse.json(
-      { error: 'Missing materialId or buyerAddress' },
+      { error: 'Missing materialId' },
       { status: 400 }
     );
   }
